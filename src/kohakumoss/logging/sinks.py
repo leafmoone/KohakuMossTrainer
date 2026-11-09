@@ -6,6 +6,8 @@ import json
 import time
 from pathlib import Path
 
+from PIL import Image, ImageOps
+
 from kohakumoss.logging.keys import named_row
 from kohakumoss.logging.log import get_logger
 
@@ -70,7 +72,10 @@ class NullLogger:
     def resume_at(self, step: int) -> None:
         return None
 
-    def log_images(self, key: str, images: list, step: int) -> None:
+    def log_images(self, key: str, images: list, step: int, captions=None) -> None:
+        return None
+
+    def log_references(self, key: str, images: list, prompts: list, step: int) -> None:
         return None
 
     def close(self) -> None:
@@ -121,7 +126,10 @@ class ConsoleLogger:
         self.pending.clear()
         self.failing = False
 
-    def log_images(self, key: str, images: list, step: int) -> None:
+    def log_images(self, key: str, images: list, step: int, captions=None) -> None:
+        return None
+
+    def log_references(self, key: str, images: list, prompts: list, step: int) -> None:
         return None
 
     def close(self) -> None:
@@ -169,8 +177,36 @@ class WandbLogger(ConsoleLogger):
         super().log(metrics, step)
         self.run.log(named_row(metrics), step=step)
 
-    def log_images(self, key: str, images: list, step: int) -> None:
-        self.run.log({key: [wandb.Image(im) for im in images]}, step=step)
+    def log_images(self, key: str, images: list, step: int, captions=None) -> None:
+        if captions is not None and len(captions) != len(images):
+            raise ValueError("each logged image must have one caption")
+        if captions is None:
+            logged = [wandb.Image(im) for im in images]
+        else:
+            logged = [
+                wandb.Image(im, caption=caption)
+                for im, caption in zip(images, captions)
+            ]
+        self.run.log({key: logged}, step=step)
+
+    def log_references(self, key: str, images: list, prompts: list, step: int) -> None:
+        if len(images) != len(prompts):
+            raise ValueError("sample references must match the prompts")
+        rows = [
+            [i + 1, wandb.Image(path, caption=f"Sample {i + 1}: {prompt}"), prompt]
+            for i, (path, prompt) in enumerate(zip(images, prompts))
+        ]
+        previews = {}
+        for path in images:
+            if path not in previews:
+                with Image.open(path) as original:
+                    previews[path] = ImageOps.pad(original.convert("RGB"), (768, 768))
+        gallery = [
+            wandb.Image(previews[path], caption=f"Sample {i + 1}: {prompt}")
+            for i, (path, prompt) in enumerate(zip(images, prompts))
+        ]
+        table = wandb.Table(columns=["sample", "reference", "prompt"], data=rows)
+        self.run.log({key: table, f"{key}_images": gallery}, step=step)
 
     def close(self) -> None:
         super().close()

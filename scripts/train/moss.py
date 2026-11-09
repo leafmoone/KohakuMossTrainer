@@ -45,7 +45,7 @@ TRAIN_TEXT_REFINER = False  # adapters/full FT also on the 2 text-refiner blocks
 # ===================== DATA =====================
 DATASETS = (
     []
-)  # [{"source": "kohya" | "folder" | "jsonl" | "parquet" | "webdataset" | "moss_shard", "path": ..., "weight": 1.0, ...}]
+)  # [{"source": "kohya" | "folder" | "jsonl" | "parquet" | "webdataset" | "moss_shard", "path": ..., "weight": 1.0, ...}] | [{"source": "sakura_service", "socket": "/path/to/data.sock"}]
 RESOLUTION_MODE = "resize"  # "resize" (native aspect, area ~= TARGET_AREA) | "bucket" | "shifted_square" | "square_crop"
 TARGET_AREA = 1024 * 1024  # pixels
 SIZE_STEP = 16  # pixel multiple (VAE /8 x patchify 2)
@@ -217,6 +217,7 @@ COMPILE = "off"  # "off" | "block" | "model"
 # ===================== RUNTIME =====================
 DRIVER = "native"  # deprecated: every run uses the native loop ("lightning" warns)
 STEPS = 1000
+EPOCHS = 0  # > 0: derive STEPS from the actual dataset plan
 GRAD_ACC = 1
 OUTPUT_DIR = "runs/moss"
 RUN_NAME = ""
@@ -239,7 +240,8 @@ SAMPLE_PROMPTS: Annotated[list, FormatArg(prompt_list)] = (
     []
 )  # a bare string is one prompt
 SAMPLE_NEGATIVE = ""
-SAMPLE_EVERY = 0  # steps; 0 = off
+SAMPLE_EVERY = 200  # steps; 0 = off; epoch mode uses SAMPLE_EVERY_EPOCHS
+SAMPLE_EVERY_EPOCHS = 1  # epoch mode: sample every N epochs (SAMPLE_EVERY > 0)
 SAMPLE_STEPS = 50
 SAMPLE_CFG = 3.0
 SAMPLE_SHIFT = 5.0
@@ -248,16 +250,16 @@ SAMPLE_SIZE = (1024, 1024)
 SAMPLE_SEEDS = (0,)
 SAMPLE_BATCH = 4  # prompts per packed varlen sampling forward (mixed sizes); 0 = all
 SAMPLE_COLUMNS = 0  # images per row of each step's sample sheet; 0 = no sheet
-SAMPLE_AT_START = False  # also sample before a fresh run's first step (step 0)
+SAMPLE_AT_START = True  # also sample before a fresh run's first step (step 0)
 VALIDATE_EVERY = 0  # steps; 0 = off
 VALIDATION = {}  # {"datasets": [...], "sigmas": [...], "seed": 0}
 
 # ===================== CHECKPOINT / EXPORT =====================
-SAVE_EVERY = 500  # steps; 0 = off
+SAVE_EVERY = 100  # steps; 0 = off
 SAVE_MINUTES = (
     0  # also a checkpoint every N minutes (checked every LOG_EVERY steps); 0 = off
 )
-KEEP_LAST = 3
+KEEP_LAST = 0  # retain all checkpoints
 FINAL_CHECKPOINT = "auto"  # resume checkpoint at the run's end: "auto" = when SAVE_EVERY or SAVE_MINUTES is on | True | False (exports are always written)
 RESUME = ""  # checkpoint dir | "latest"
 INIT_FROM = ""  # checkpoint dir whose trainable weights start a fresh run

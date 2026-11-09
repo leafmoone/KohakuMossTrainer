@@ -86,6 +86,7 @@ class SampleGrid:
         modes: tuple[Callable, Callable],
         columns: int = 0,
         at_start: bool = False,
+        references: list[str] | None = None,
     ):
         self.at_start = at_start
         self.every = every
@@ -96,6 +97,7 @@ class SampleGrid:
         self.model = model
         self.eval_mode, self.train_mode = modes
         self.columns = columns
+        self.references = references or []
 
     @torch.no_grad()
     def on_step_end(self, state: TrainState, out) -> None:
@@ -111,10 +113,22 @@ class SampleGrid:
             self.write(state.step, images)
         except OSError as err:
             log.error(f"sample files of step {state.step} not written: {err}")
+        prompts = list(self.settings.get("prompts") or [])
+        captions = prompts or None
         if self.columns:
-            prompts = list(self.settings.get("prompts") or [])
             images = [step_sheet(images, prompts, self.columns, LOG_SIDE)]
-        self.logger.log_images("samples", images, state.step)
+            captions = (
+                ["\n\n".join(f"{i + 1}: {p}" for i, p in enumerate(prompts))]
+                if prompts
+                else None
+            )
+        self.logger.log_images("samples", images, state.step, captions=captions)
+        if self.references:
+            if len(self.references) != len(prompts):
+                raise ValueError("sample references must match the prompts")
+            self.logger.log_references(
+                "sample_references", self.references, prompts, state.step
+            )
 
     def write(self, step: int, images: list) -> None:
         """`samples/step_XXXXXXXX/`: the images, settings.json, the step sheet; then

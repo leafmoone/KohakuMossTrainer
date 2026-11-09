@@ -173,6 +173,21 @@ def entry_problems(cfg: DataConfig) -> list[str]:
     template that reads the row geometry (`geometric`) under a crop or flip it cannot
     follow (a random crop, a flip)."""
     out = []
+    sakura = [
+        entry for entry in cfg.datasets if entry.get("source") == "sakura_service"
+    ]
+    if sakura:
+        if len(cfg.datasets) != 1:
+            out.append("sakura_service requires exactly one dataset")
+        if cfg.num_workers != 0:
+            out.append("sakura_service requires NUM_WORKERS=0")
+        if cfg.latent_cache != "off" or cfg.text_cache != "off":
+            out.append("sakura_service requires LATENT_CACHE=TEXT_CACHE='off'")
+        if any(
+            not isinstance(entry.get("socket"), str) or not entry.get("socket")
+            for entry in sakura
+        ):
+            out.append("sakura_service requires a nonempty socket path")
     random_crop = cfg.crop == "random" or cfg.resolution_mode == "shifted_square"
     for entry in cfg.datasets:
         name = entry.get("source")

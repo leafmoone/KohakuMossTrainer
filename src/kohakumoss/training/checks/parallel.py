@@ -234,8 +234,12 @@ def _pipeline_problems(k: dict) -> list[str]:
         )
     for name in ("TRACE_STEPS", "PROFILE_STEPS"):
         trace = k[name]
+        pending = k.get("EPOCHS", 0) and "_EPOCH_BOUNDARIES" not in k
         window = (
-            ints(trace) and len(trace) == 2 and 1 <= trace[0] < trace[1] <= k["STEPS"]
+            ints(trace)
+            and len(trace) == 2
+            and 1 <= trace[0] < trace[1]
+            and (pending or trace[1] <= k["STEPS"])
         )
         if not (window or (ints(trace) and len(trace) == 0)):
             p.append(

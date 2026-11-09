@@ -1,6 +1,7 @@
 """Caption templates: CatalogRow + seeded generator -> caption string; options
 (normaliser, dropout, shuffle, json format) are bound at construction."""
 
+import math
 from functools import partial
 
 import numpy as np
@@ -173,6 +174,77 @@ class MixTemplate:
         return np.maximum(
             self.nl.estimate_chars(catalog), self.tags.estimate_chars(catalog)
         )
+
+
+@CAPTIONS.register("multichoice")
+class MultiChoiceTemplate:
+    """Choose one of six captions from categorized tags and multi-caption metadata."""
+
+    names = ("tags", "nl2", "nl3", "long_no_names", "long_names", "short_vibes")
+    default_weights = (5, 1, 1, 1, 3, 1)
+
+    def __init__(self, weights: dict | None = None):
+        weights = {} if weights is None else weights
+        unknown = set(weights) - set(self.names)
+        if unknown:
+            raise ValueError(f"multichoice: unknown weight names: {sorted(unknown)}")
+        values = [
+            float(weights.get(name, default))
+            for name, default in zip(self.names, self.default_weights)
+        ]
+        total = sum(values)
+        if (
+            any(not math.isfinite(v) or v < 0 for v in values)
+            or not math.isfinite(total)
+            or total <= 0
+        ):
+            raise ValueError(
+                "multichoice: weights must be finite, non-negative, and have a positive sum"
+            )
+        self.probabilities = np.array(values, dtype=np.float64) / total
+
+    @staticmethod
+    def _items(value):
+        if isinstance(value, (list, tuple)):
+            return [s for item in value for s in MultiChoiceTemplate._items(item)]
+        if isinstance(value, str) and value.strip():
+            return [value.strip()]
+        return []
+
+    def render(self, row: CatalogRow, rng: np.random.Generator) -> str:
+        data = row.json or {}
+        tags = data.get("tags") or {}
+        captions = data.get("captions") or {}
+        multi = data.get("multicaptions") or {}
+        tags = tags if isinstance(tags, dict) else {}
+        captions = captions if isinstance(captions, dict) else {}
+        multi = multi if isinstance(multi, dict) else {}
+        choice = self.names[int(rng.choice(len(self.names), p=self.probabilities))]
+        if choice == "tags":
+            values = [
+                data.get("nsfw"),
+                *(tags.get(k) for k in ("general", "artist", "copyright", "character")),
+                row.rating,
+                *(
+                    data.get(k)
+                    for k in (
+                        "year",
+                        "quality",
+                        "anime_completeness",
+                        "anime_classification",
+                    )
+                ),
+            ]
+        elif choice in ("nl2", "nl3"):
+            values = [captions.get(choice)]
+        elif choice == "short_vibes":
+            values = [multi.get("short"), multi.get("vibes")]
+        else:
+            values = [multi.get(choice)]
+        return ", ".join(s for value in values for s in self._items(value))
+
+    def estimate_chars(self, catalog) -> np.ndarray:
+        return catalog.chars["json_chars"] + catalog.chars["rating_chars"] + 2
 
 
 @CAPTIONS.register("json")

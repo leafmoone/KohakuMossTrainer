@@ -79,6 +79,8 @@ def schedule_problems(k: dict) -> list[str]:
     p = []
     for name, sub in zip(names, subs):
         raw_end = sub.get("end", -1)
+        if raw_end == -1 and k.get("EPOCHS", 0) and "_EPOCH_BOUNDARIES" not in k:
+            continue  # STEPS is not known until the dataset is planned
         end = k["STEPS"] if raw_end == -1 else raw_end
         warmup = sub.get("warmup", 0)
         if isinstance(end, int) and warmup >= end:
