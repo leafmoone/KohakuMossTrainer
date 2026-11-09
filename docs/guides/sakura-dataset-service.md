@@ -8,11 +8,11 @@ trainer epoch: use `STEPS`, `SAVE_EVERY` and `SAMPLE_EVERY`, and set `EPOCHS = 0
 The service and trainer must run on the same Linux host. One service instance is used
 by one training consumer; do not share its worker 0 with another process.
 
-Clone the service branch with configurable TAR sampling and install it into the trainer's
+Clone the service with configurable TAR sampling and install it into the trainer's
 environment (Python 3.11+ and Pydantic 2.7+ are required):
 
 ```bash
-git clone --branch codex/balanced-multiple-tars https://github.com/leafmoone/Sakuradatasetservice.git
+git clone https://github.com/leafmoone/Sakuradatasetservice.git
 uv pip install --python .venv/bin/python -e ./Sakuradatasetservice
 ```
 
