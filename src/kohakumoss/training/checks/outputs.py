@@ -48,6 +48,9 @@ def io_problems(k: dict) -> list[str]:
     p = export_problems(k)
     if k["SAMPLE_EVERY"] > 0 and not k["SAMPLE_PROMPTS"]:
         p.append("SAMPLE_EVERY > 0 needs SAMPLE_PROMPTS")
+    interval = k.get("SAMPLE_EVERY_EPOCHS", 1)
+    if isinstance(interval, bool) or not isinstance(interval, int) or interval < 1:
+        p.append(f"SAMPLE_EVERY_EPOCHS must be an int >= 1, got {interval!r}")
     for name, default, zero in (
         ("SAMPLE_COLUMNS", 0, "no sheet"),
         ("SAMPLE_BATCH", 4, "all prompts in one batch"),

@@ -72,9 +72,12 @@ from kohakumoss.training.build.model import (
 from kohakumoss.training.build.pipelines import release_nonlocal
 from kohakumoss.training.callbacks.evaluate import FixedSigma
 from kohakumoss.training.checkpoint.io import load_trainable
+from kohakumoss.training.checks.objective import schedule_problems
+from kohakumoss.training.checks.parallel import parallel_problems
 from kohakumoss.training.context import RunContext
 from kohakumoss.training.drivers import Parts
 from kohakumoss.training.encode import EncodeFeed, RankFeed, StreamedLoader, pin_batches
+from kohakumoss.training.epochs import epoch_steps
 from kohakumoss.training.exports import (
     export_bytes,
     export_files,
@@ -108,6 +111,13 @@ def run(g: dict):
     shutdown.install()
     setup()
     k = check(g)
+    if any(d.get("source") == "sakura_service" for d in k["DATASETS"]):
+        if k.get("EPOCHS", 0):
+            raise ValueError("sakura_service uses STEPS; set EPOCHS=0")
+        if k.get("ENCODE_DEVICES"):
+            raise ValueError("sakura_service does not support ENCODE_DEVICES")
+        if k.get("PARALLEL") != "none":
+            raise ValueError("sakura_service currently supports PARALLEL='none' only")
     if k["ENCODE_DEVICES"] and not initialized():
         return run_fed(k)
     if layout_of(k).spawns and not initialized():
@@ -232,9 +242,12 @@ def _start(k: dict, layout: Layout, rank: int, device: torch.device):
     prec = build_precision(
         k["PRECISION"], k["KEEP_FP32"], k["FP16_FIX"], k["FP16_FIX_KWARGS"]
     )
+    duration = (
+        f"{hl(k['EPOCHS'])} epochs" if k.get("EPOCHS", 0) else f"{hl(k['STEPS'])} steps"
+    )
     log.info(
         f"run {hl(run_name(k))}: {hl(k['ALGO'])} {hl(k['PRECISION'])} on {device}, "
-        f"{hl(k['STEPS'])} steps, output {hl(output_dir, 'path')}, allocator "
+        f"{duration}, output {hl(output_dir, 'path')}, allocator "
         f"{hl(allocator)}, compile pool: {hl(compile_pool)}"
     )
     return output_dir, prec, lycoris_tuning
@@ -328,6 +341,26 @@ def worker(
         kd, tokens, loader = _data(k, layout, rank, world, device)
     else:
         kd, tokens, loader = _fed_data(k, layout, rank, world, device, feed)
+    if k.get("EPOCHS", 0):
+        accumulation = k["MICROBATCHES"] if layout.pipelined else k["GRAD_ACC"]
+        boundaries = epoch_steps(
+            loader.dataset.planner, k["EPOCHS"], data_world, accumulation
+        )
+        k["STEPS"] = boundaries[-1]
+        k["_EPOCH_BOUNDARIES"] = boundaries
+        problems = schedule_problems(k) + parallel_problems(k)
+        if problems:
+            raise ValueError(
+                "invalid configuration after epoch planning:\n  - "
+                + "\n  - ".join(problems)
+            )
+        if is_main:
+            (Path(output_dir) / "config.json").write_text(
+                json.dumps(_snapshot(k), indent=2), encoding="utf-8"
+            )
+            log.info(
+                f"{k['EPOCHS']} epochs planned: {k['STEPS']} optimizer steps; epoch ends {boundaries}"
+            )
     ranks_meet("data")
     torch.manual_seed(k["SEED"])
     streamed = None if feed is None else loader

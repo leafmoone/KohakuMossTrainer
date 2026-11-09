@@ -59,6 +59,9 @@ def apply_json(row: CatalogRow, meta: dict) -> None:
     tags = meta.pop("tags", None)
     if tags is not None:
         row.tags = split_tags(tags) if isinstance(tags, str) else list(tags)
+        if isinstance(tags, dict):
+            # Keep category lists available to templates reading structured metadata.
+            meta["tags"] = tags
     for key in ("caption", "text", "caption_nl"):
         if key in meta:
             row.caption_nl = meta.pop(key)

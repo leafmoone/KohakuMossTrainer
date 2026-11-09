@@ -1,0 +1,16 @@
+# Edit these values before starting scripts/data/sakura_service.py.
+[source]
+# "local" reads files under local_root; "modelscope" uses MODELSCOPE_API_TOKEN.
+kind = "local"
+local_root = "/path/to/tars"
+repo_id = "local/my-data"
+revision = "v1"
+
+[service]
+manifest = "/path/to/manifest.json"
+cache_root = "/path/to/dedicated-cache"
+state_dir = "/path/to/service-state"
+cache_high_bytes = 107374182400
+download_concurrency = 2
+seed = 0
+per_folder = 5

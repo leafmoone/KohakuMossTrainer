@@ -66,6 +66,8 @@ Templates (`CAPTION = {"template": ...}`):
   `shuffle`. `underscores` turns `_` into spaces, `unescape` turns `\(` into `(`.
 - `nl`: `caption_nl`, keep fields prepended as `a, b. `, falling back to tags.
 - `mix`: natural language with probability `p_nl`, tags otherwise.
+- `multichoice`: choose one of six weighted captions from a structured JSON sidecar,
+  see [Multi-choice JSON captions](#multi-choice-json-captions).
 - `json`: `row.json` plus listed row fields as `key: value` lines or compact JSON, with
   `field_dropout` (fields in `keep` never drop).
 - `gbc`: a `gbc` source's samples from their graph and metadata, see
@@ -86,6 +88,36 @@ the planner.
 Text dropout (`TEXT_DROP`) is decided per (seed, index, rank, slot) before lengths are
 known: a dropped sample's caption is `""`, and its embedding is the cached empty
 prompt.
+
+### Multi-choice JSON captions
+
+Use a `folder` source with a same-stem `.json` for each image (or another source that
+supplies equivalent metadata) and `CAPTION = {"template": "multichoice", "weights":
+{...}}`. A ready-to-edit layer is `configs/moss/data/data_folder_multichoice.py`.
+The six weight names and their output are:
+
+| weight | caption text, joined with `, ` in this order |
+| --- | --- |
+| `tags` | `nsfw`, `tags.general`, `tags.artist`, `tags.copyright`, `tags.character`, `rating`, `year`, `quality`, `anime_completeness`, `anime_classification` |
+| `nl2` | `captions.nl2` |
+| `nl3` | `captions.nl3` |
+| `long_no_names` | `multicaptions.long_no_names` |
+| `long_names` | `multicaptions.long_names` |
+| `short_vibes` | `multicaptions.short`, `multicaptions.vibes` |
+
+Values are strings or lists of strings. Missing, null, empty and whitespace-only
+values are omitted; a selected option with no content produces an empty caption, not
+a redraw. Tag strings retain underscores and their original order. Weights are
+non-negative relative weights (they need not sum to 1); zero disables an option, and
+at least one must be positive. The defaults, in the order shown above, are
+`5, 1, 1, 1, 3, 1`; omitted weights retain their respective defaults. Existing
+`TEXT_DROP` applies independently.
+
+The template renders text in memory; it does not write `.txt` files. Selection is per
+caption variant, so a small `CAPTION_VARIANTS` may not represent every option for each
+image. More variants improve coverage but increase text-cache cost. If this dataset
+was scanned before categorized tags were supported, set `DATA_RESCAN = True` once to
+rebuild its catalog. Rebuild the text cache after changing captions or weights.
 
 ## Resolution, batching, over-long samples
 

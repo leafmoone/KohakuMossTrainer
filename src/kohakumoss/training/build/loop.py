@@ -1,6 +1,7 @@
 """Loop-side build: objective + step, optimiser bundle, EMA, callbacks, driver."""
 
 import contextlib
+import json
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -42,7 +43,11 @@ from kohakumoss.training.callbacks.kernels import (
 from kohakumoss.training.callbacks.monitor import job_counts
 from kohakumoss.training.callbacks.progress import ProgressBar
 from kohakumoss.training.callbacks.repro import StepRecorder
-from kohakumoss.training.callbacks.runner import MeetRanks, rank0_decision
+from kohakumoss.training.callbacks.runner import (
+    EpochCallback,
+    MeetRanks,
+    rank0_decision,
+)
 from kohakumoss.training.callbacks.startup import StepOneBreakdown
 from kohakumoss.training.callbacks.transfer import TransferStats, transfer_sources
 from kohakumoss.training.checkpoint import CheckpointManager
@@ -297,6 +302,27 @@ def ema_before_read(bundle) -> Callable[[], None]:
     return nothing if blocks is None else blocks.synchronize
 
 
+def sample_reference_paths(k: dict) -> list[str]:
+    """Use prepared reference images only when their prompt order matches this run."""
+    datasets = k.get("DATASETS") or []
+    if len(datasets) != 1 or datasets[0].get("source") != "folder":
+        return []
+    root = Path(datasets[0]["path"]).parent
+    try:
+        prompts = json.loads((root / "sample-prompts.json").read_text(encoding="utf-8"))
+        rows = json.loads((root / "sample-provenance.json").read_text(encoding="utf-8"))
+        if prompts != k["SAMPLE_PROMPTS"] or len(rows) != len(prompts):
+            return []
+        if any(
+            row["index"] != i or not Path(row["image"]).is_file()
+            for i, row in enumerate(rows)
+        ):
+            return []
+        return [row["image"] for row in rows]
+    except (OSError, ValueError, TypeError, KeyError):
+        return []
+
+
 def sample_settings(k: dict, embeds: list | None = None) -> dict:
     """MossPipeline.generate kwargs from the SAMPLE_* knobs (one seed per prompt); with
     `embeds` (the build-time encodings of the prompts, then the negative) the pipeline
@@ -439,6 +465,15 @@ def build_callbacks(
     cbs += vram_callbacks(k, device)
     cbs += release_callbacks(device, rows, k["STEP_RELEASE"], level != "train")
     cbs += vram_metric_callbacks(level, rows, timeline, device_use)
+
+    def sample_cadence(callback):
+        boundaries = k.get("_EPOCH_BOUNDARIES")
+        return (
+            EpochCallback(callback, boundaries, k.get("SAMPLE_EVERY_EPOCHS", 1))
+            if boundaries
+            else callback
+        )
+
     if k["SAMPLE_EVERY"] > 0 and is_main:
         pipe = MossPipeline.from_components(
             built.backbone,
@@ -448,21 +483,26 @@ def build_callbacks(
             weight_stream=built.engines.weight_stream,
         )
         cbs.append(
-            SampleGrid(
-                k["SAMPLE_EVERY"],
-                PipelineImages(pipe, autocast),
-                sample_settings(k, built.sample_embeds),
-                output_dir,
-                logger,
-                built.backbone,
-                modes,
-                k.get("SAMPLE_COLUMNS", 0),
-                k.get("SAMPLE_AT_START", False),
+            sample_cadence(
+                SampleGrid(
+                    k["SAMPLE_EVERY"],
+                    PipelineImages(pipe, autocast),
+                    sample_settings(k, built.sample_embeds),
+                    output_dir,
+                    logger,
+                    built.backbone,
+                    modes,
+                    k.get("SAMPLE_COLUMNS", 0),
+                    k.get("SAMPLE_AT_START", False),
+                    references=sample_reference_paths(k),
+                )
             )
         )
     if k["SAMPLE_EVERY"] > 0 and dist_rank()[1] > 1:
         start = k.get("SAMPLE_AT_START", False)
-        cbs.append(MeetRanks(k["SAMPLE_EVERY"], "sampled", ranks_meet, start))
+        cbs.append(
+            sample_cadence(MeetRanks(k["SAMPLE_EVERY"], "sampled", ranks_meet, start))
+        )
     if k["VALIDATE_EVERY"] > 0:
         cbs.append(
             Validation(

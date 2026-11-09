@@ -65,6 +65,17 @@ write and check the config for you: `scripts\examples\train.ps1` (Windows) or
    ```
 
    - Any knob can be overridden on the command line (`--set LR=2e-4 --set DIM=16`).
+   - Set `EPOCHS=20` to train for 20 planned dataset epochs instead of `STEPS`.
+     The loader calculates the optimiser steps from each epoch's real batches,
+     including dropped or weighted items. When sampling is enabled (`SAMPLE_EVERY > 0`),
+     it generates samples every `SAMPLE_EVERY_EPOCHS` epochs (default 1) and, by
+     default, at step 0. For example, `SAMPLE_EVERY_EPOCHS=5` samples at epochs
+     5, 10, 15, etc.; the last epoch is not sampled unless it is a multiple of 5.
+     Set `SAMPLE_EVERY=0` to disable samples, including step 0. The epoch interval
+     does not affect step-based training (`EPOCHS=0`). `SAVE_EVERY` remains in steps.
+     Each epoch boundary must align with all data ranks and gradient-accumulation
+     batches; otherwise the run stops with an error explaining what to adjust.
+     `EPOCHS=0` keeps the usual step-based schedule.
    - Resume an interrupted run with `--set RESUME=latest`.
    - Start a new run from another run's weights with `--set INIT_FROM=<checkpoint dir>`
      (optimiser, schedule and data start fresh; a RESUME checkpoint wins). The weights
@@ -79,7 +90,7 @@ write and check the config for you: `scripts\examples\train.ps1` (Windows) or
    | `config.json` | the knobs |
    | `log.txt` | every console log line: the plan, kernel decisions, warnings, errors |
    | `metrics.jsonl` | per-step metrics |
-   | `samples/step_XXXXXXXX/` | training-time samples every `SAMPLE_EVERY` steps (and at step 0 with `SAMPLE_AT_START`), `SAMPLE_BATCH` prompts per packed varlen forward of their own sizes (0 = all); with `SAMPLE_COLUMNS` > 0 also `sheet.png`, the images `SAMPLE_COLUMNS` per row, which the logger gets in their place |
+   | `samples/step_XXXXXXXX/` | training-time samples every `SAMPLE_EVERY` steps and, by default, at step 0 of a fresh run (`SAMPLE_AT_START=False` disables the initial sample); `SAMPLE_BATCH` prompts per packed varlen forward of their own sizes (0 = all); with `SAMPLE_COLUMNS` > 0 also `sheet.png`, the images `SAMPLE_COLUMNS` per row, which the logger gets in their place |
    | `checkpoints/step_XXXXXXXX/` | checkpoints, each with its `export/` (`CHECKPOINT_EXPORT`) |
    | `export/<RUN_NAME>-comfy.safetensors`, `export/<RUN_NAME>-lycoris.safetensors` | the adapter (`SAVE_FORMAT`: the base config writes `both`), written at the end of the run |
 

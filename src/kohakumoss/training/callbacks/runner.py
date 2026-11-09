@@ -76,6 +76,21 @@ class CallbackRunner:
         self.edged -= gone
 
 
+class EpochCallback:
+    """Run a callback at selected epoch ends (and optionally at step zero)."""
+
+    every = 1
+
+    def __init__(self, callback, boundaries, every_epochs=1):
+        self.callback = callback
+        self.boundaries = frozenset(boundaries[every_epochs - 1 :: every_epochs])
+        self.at_start = getattr(callback, "at_start", False)
+
+    def on_step_end(self, state, out):
+        if state.step == 0 or state.step in self.boundaries:
+            return self.callback.on_step_end(state, out)
+
+
 class SaveCheckpoint:
     """Every `every` steps: write a checkpoint from the live parts."""
 
